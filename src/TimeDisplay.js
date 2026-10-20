@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import {
   REI_OPTIONS,
   START_OFFSET_MINUTES,
+  addMinutesToTimeValue,
   buildFinishDate,
   buildTagText,
   calculateTimes,
@@ -14,7 +15,7 @@ import {
   randomSuccessMessage,
 } from "./utils";
 
-function TimeDisplay({ addHistory }) {
+function TimeDisplay({ addHistory, lastTag = null }) {
   const [rei, setRei] = useState(4);
   const [finishTime, setFinishTime] = useState(currentTimeValue);
   const [fieldNumber, setFieldNumber] = useState("");
@@ -26,8 +27,8 @@ function TimeDisplay({ addHistory }) {
   // Live preview of start / re-entry before generating
   const preview = useMemo(() => {
     const finish = buildFinishDate(finishTime);
-    return finish ? calculateTimes(finish, rei) : null;
-  }, [finishTime, rei]);
+    return finish ? calculateTimes(finish, rei, lastTag?.finish) : null;
+  }, [finishTime, rei, lastTag]);
 
   const handleGenerate = async (event) => {
     event.preventDefault();
@@ -45,7 +46,7 @@ function TimeDisplay({ addHistory }) {
       return;
     }
 
-    const { start, reentry } = calculateTimes(finish, rei);
+    const { start, reentry } = calculateTimes(finish, rei, lastTag?.finish);
     const text = buildTagText(rei, finish, reentry);
 
     addHistory({
@@ -117,9 +118,10 @@ function TimeDisplay({ addHistory }) {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setFinishTime(currentTimeValue())}
+              onClick={() => setFinishTime((t) => addMinutesToTimeValue(t, 1))}
+              aria-label="Add 1 minute to finish time"
             >
-              Now
+              +1 min
             </button>
           </div>
           {preview && (
@@ -135,7 +137,9 @@ function TimeDisplay({ addHistory }) {
             </div>
           )}
           <p className="hint">
-            Start time is recorded {START_OFFSET_MINUTES} minutes before finish.
+            {preview?.fromPrevious
+              ? `Start set to Field ${lastTag.fieldNumber}'s finish (less than ${START_OFFSET_MINUTES} minutes earlier).`
+              : `Start is ${START_OFFSET_MINUTES} minutes before finish, or the last field's finish if that was less than ${START_OFFSET_MINUTES} minutes earlier.`}
           </p>
         </div>
 
