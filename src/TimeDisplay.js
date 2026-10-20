@@ -1,217 +1,192 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  REI_OPTIONS,
+  START_OFFSET_MINUTES,
+  buildFinishDate,
+  buildTagText,
+  calculateTimes,
+  copyToClipboard,
+  currentTimeValue,
+  formatDayTime,
+  formatFieldNumber,
+  formatTime,
+  makeId,
+  randomSuccessMessage,
+} from "./utils";
 
 function TimeDisplay({ addHistory }) {
-  const [selectedValue, setSelectedValue] = useState("4"); // Default value set to 4
-  const [startTimeInput, setStartTimeInput] = useState("");
-  const [duration, setDuration] = useState("");
+  const [rei, setRei] = useState(4);
+  const [finishTime, setFinishTime] = useState(currentTimeValue);
   const [fieldNumber, setFieldNumber] = useState("");
-  const [startTime, setStartTime] = useState(null);
-  const [endTime, setEndTime] = useState(null);
-  const [copySuccess, setCopySuccess] = useState("");
-  const textAreaRef = useRef(null);
-  const successMessages = [
-    "Copied! You're a genius!",
-    "Copied! You rock!",
-    "Copied! Nailed it!",
-    "Copied! High five!",
-    "Copied! You’re on fire!",
-    "Copied! Boom!",
-    "Copied! Like a boss!",
-    "Copied! You're unstoppable!",
-    "Copied! Legendary!",
-    "Copied! You deserve a cookie!",
-    "Copied! Bravo!",
-    "Copied! You’re a wizard!",
-    "Copied! Super-duper!",
-    "Copied! Marvelous!",
-    "Copied! Epic win!",
-    "Copied! That was awesome!",
-    "Copied! Victory is yours!",
-    "Copied! Fantastic!",
-    "Copied! You're a star!",
-    "Copied! Yay you!",
-  ];
+  const [error, setError] = useState("");
+  const [tag, setTag] = useState(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const fieldRef = useRef(null);
 
-  useEffect(() => {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const formattedTime = `${hours}:${minutes}`;
-    setStartTimeInput(formattedTime);
-  }, []);
+  // Live preview of start / re-entry before generating
+  const preview = useMemo(() => {
+    const finish = buildFinishDate(finishTime);
+    return finish ? calculateTimes(finish, rei) : null;
+  }, [finishTime, rei]);
 
-  const handleChange = (event) => {
-    setSelectedValue(event.target.value);
-  };
+  const handleGenerate = async (event) => {
+    event.preventDefault();
 
-  const handleStartTimeChange = (event) => {
-    setStartTimeInput(event.target.value);
-  };
-
-  const handleDurationChange = (event) => {
-    setDuration(event.target.value);
-  };
-
-  const handleFieldNumberChange = (event) => {
-    setFieldNumber(event.target.value);
-  };
-
-  const handleClick = () => {
-    const now = new Date();
-    const [hours, minutes] = startTimeInput.split(":");
-    now.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    const start = now;
-    if (isNaN(start)) {
-      setCopySuccess("Invalid start time");
+    const field = formatFieldNumber(fieldNumber);
+    if (!field) {
+      setError("Enter a field number.");
+      fieldRef.current?.focus();
       return;
     }
-    const subtractedTime = new Date(start.getTime() - 3 * 60000); // Subtract duration minutes from start time
-    const end = new Date(start.getTime() + selectedValue * 60 * 60000); // Add selected hours to start time
-    const options = {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    };
-    const shortOptions = {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    };
-    const formattedStartTime = start.toLocaleString("en-US", options);
-    const formattedEndTime = end.toLocaleString("en-US", options);
-    const formattedHistoryTime = start.toLocaleString("en-US", shortOptions);
-    const formattedSubtractedTime = subtractedTime.toLocaleString(
-      "en-US",
-      shortOptions
-    );
 
-    setStartTime(formattedStartTime);
-    setEndTime(formattedEndTime);
+    const finish = buildFinishDate(finishTime);
+    if (!finish) {
+      setError("Set the finish time.");
+      return;
+    }
+
+    const { start, reentry } = calculateTimes(finish, rei);
+    const text = buildTagText(rei, finish, reentry);
 
     addHistory({
-      fieldNumber: fieldNumber,
-      subtractedTime: formattedSubtractedTime,
-      startTime: formattedHistoryTime,
-      selectedValue: selectedValue,
-    }); // Add start time to history
+      id: makeId(),
+      createdAt: new Date().toISOString(),
+      fieldNumber: field,
+      rei,
+      start: start.toISOString(),
+      finish: finish.toISOString(),
+      reentry: reentry.toISOString(),
+    });
 
-    const copyText = `REI ${selectedValue} HRS ${formattedStartTime}\nRE-ENTRY ${formattedEndTime}`;
-    setCopySuccess("");
+    setError("");
+    setTag({ text, fieldNumber: field });
+    setFieldNumber(""); // ready for the next field
 
-    if (navigator.clipboard) {
-      navigator.clipboard
-        .writeText(copyText)
-        .then(() => {
-          const randomMessage =
-            successMessages[Math.floor(Math.random() * successMessages.length)];
-          setCopySuccess(randomMessage);
-        })
-        .catch((err) => {
-          console.error("Failed to copy: ", err);
-          setCopySuccess("Failed to copy! Falling back to manual copy.");
-          fallbackCopyText(copyText);
-        });
-    } else {
-      fallbackCopyText(copyText);
-    }
+    const copied = await copyToClipboard(text);
+    setCopyStatus(
+      copied
+        ? randomSuccessMessage()
+        : "Couldn't copy automatically. Press and hold the tag text to copy it."
+    );
   };
 
-  const fallbackCopyText = (text) => {
-    const textArea = textAreaRef.current;
-    textArea.value = text;
-    textArea.style.display = "block";
-    textArea.select();
-    try {
-      document.execCommand("copy");
-      const randomMessage =
-        successMessages[Math.floor(Math.random() * successMessages.length)];
-      setCopySuccess(randomMessage);
-    } catch (err) {
-      console.error("Fallback: Oops, unable to copy", err);
-      setCopySuccess("Failed to copy!");
-    }
-    textArea.style.display = "none";
+  const handleCopyAgain = async () => {
+    if (!tag) return;
+    const copied = await copyToClipboard(tag.text);
+    setCopyStatus(copied ? randomSuccessMessage() : "Copy failed. Copy the text manually.");
   };
 
   return (
-    <div>
-      <div className="form-group">
-        <label htmlFor="time-select">Set REI:</label>
-        <select id="time-select" value={selectedValue} onChange={handleChange}>
-          <option value="4">4</option>
-          <option value="12">12</option>
-          <option value="24">24</option>
-          <option value="48">48</option>
-        </select>
-      </div>
-      <div className="form-group">
-        <label htmlFor="start-time-input">Set Finish Time:</label>
-        <input
-          id="start-time-input"
-          type="time"
-          value={startTimeInput}
-          onChange={handleStartTimeChange}
-        />
-      </div>
-      {/* <div className="form-group">
-        <label htmlFor="duration-input">Duration:</label>
-        <input
-          id="duration-input"
-          type="number"
-          value={duration}
-          onChange={handleDurationChange}
-          placeholder="Barcode"
-        />
-      </div> */}
-      <div className="form-group">
-        <label htmlFor="field-number-input">Field #:</label>
-        <input
-          id="field-number-input"
-          type="text"
-          value={fieldNumber}
-          onChange={handleFieldNumberChange}
-        />
-      </div>
-      <button onClick={handleClick}>Generate Tag</button>
-      {startTime && endTime && (
-        <div>
-          <p
-            id="display-text"
-            style={{
-              color: "lightgreen",
-              fontSize: "15px",
-              fontWeight: "bold",
-            }}
-          >
-            REI {selectedValue} HRS {startTime}
-            <br />
-            RE-ENTRY {endTime}
-          </p>
-          <textarea
-            ref={textAreaRef}
-            style={{
-              position: "absolute",
-              left: "-9999px",
-              top: "0",
-              opacity: "0",
-            }}
-            readOnly
-          ></textarea>
-          {copySuccess && (
-            <p
-              style={{
-                fontSize: "12px",
-              }}
+    <>
+      <form className="card form" onSubmit={handleGenerate} noValidate>
+        {/* 1. REI */}
+        <fieldset className="field-group">
+          <legend className="label">
+            <span className="step">1</span> REI (hours)
+          </legend>
+          <div className="segmented" role="radiogroup" aria-label="REI hours">
+            {REI_OPTIONS.map((hours) => (
+              <button
+                key={hours}
+                type="button"
+                role="radio"
+                aria-checked={rei === hours}
+                className={`segment ${rei === hours ? "selected" : ""}`}
+                onClick={() => setRei(hours)}
+              >
+                {hours}
+                <span className="segment-unit">hrs</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* 2. Finish time */}
+        <div className="field-group">
+          <label className="label" htmlFor="finish-time">
+            <span className="step">2</span> Spray finish time
+          </label>
+          <div className="time-row">
+            <input
+              id="finish-time"
+              type="time"
+              className="input"
+              value={finishTime}
+              onChange={(e) => setFinishTime(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setFinishTime(currentTimeValue())}
             >
-              Tag is {copySuccess}
+              Now
+            </button>
+          </div>
+          {preview && (
+            <div className="preview">
+              <div>
+                <span className="preview-label">Start</span>
+                <span className="preview-value">{formatTime(preview.start)}</span>
+              </div>
+              <div>
+                <span className="preview-label">Re-entry</span>
+                <span className="preview-value">{formatDayTime(preview.reentry)}</span>
+              </div>
+            </div>
+          )}
+          <p className="hint">
+            Start time is recorded {START_OFFSET_MINUTES} minutes before finish.
+          </p>
+        </div>
+
+        {/* 3. Field # */}
+        <div className="field-group">
+          <label className="label" htmlFor="field-number">
+            <span className="step">3</span> Field #
+          </label>
+          <input
+            id="field-number"
+            ref={fieldRef}
+            type="text"
+            className={`input ${error ? "invalid" : ""}`}
+            value={fieldNumber}
+            onChange={(e) => {
+              setFieldNumber(e.target.value);
+              if (error) setError("");
+            }}
+            placeholder="e.g. 001"
+            autoComplete="off"
+            enterKeyHint="go"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "field-error" : undefined}
+          />
+          {error && (
+            <p id="field-error" className="error" role="alert">
+              {error}
             </p>
           )}
         </div>
+
+        <button type="submit" className="btn btn-primary btn-block btn-lg">
+          Generate Tag
+        </button>
+      </form>
+
+      {tag && (
+        <section className="card tag-card" aria-live="polite">
+          <h2 className="tag-card-title">Tag for Field {tag.fieldNumber}</h2>
+          <p className="tag-text">{tag.text}</p>
+          {copyStatus && <p className="copy-status">{copyStatus}</p>}
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            onClick={handleCopyAgain}
+          >
+            Copy Again
+          </button>
+        </section>
       )}
-    </div>
+    </>
   );
 }
 
